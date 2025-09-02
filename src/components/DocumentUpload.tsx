@@ -1,5 +1,6 @@
 
 import { useState, useRef, DragEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Upload, FileText, X, CheckCircle2, AlertCircle } from "lucide-react";
@@ -14,6 +15,7 @@ interface UploadedFile {
 }
 
 const DocumentUpload = () => {
+  const navigate = useNavigate();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -181,7 +183,21 @@ const DocumentUpload = () => {
                 </div>
                 {files.some(f => f.status === 'success') && (
                   <div className="mt-6 pt-6 border-t border-border">
-                    <Button className="w-full">
+                    <Button 
+                      className="w-full"
+                      onClick={() => {
+                        const successfulFiles = files.filter(f => f.status === 'success');
+                        navigate("/signature-editor", { 
+                          state: { 
+                            documents: successfulFiles.map(f => ({
+                              id: f.id,
+                              name: f.name,
+                              size: f.size
+                            }))
+                          } 
+                        });
+                      }}
+                    >
                       Process Documents for E-Signature
                     </Button>
                   </div>
