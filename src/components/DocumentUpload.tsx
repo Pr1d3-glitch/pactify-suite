@@ -12,6 +12,8 @@ interface UploadedFile {
   size: number;
   type: string;
   status: 'uploading' | 'success' | 'error';
+  file?: File;
+  dataUrl?: string;
 }
 
 const DocumentUpload = () => {
@@ -56,23 +58,30 @@ const DocumentUpload = () => {
         name: file.name,
         size: file.size,
         type: file.type,
-        status: 'uploading'
+        status: 'uploading',
+        file
       };
 
       setFiles(prev => [...prev, newFile]);
 
-      // Simulate upload process
-      setTimeout(() => {
+      // Convert file to data URL for preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
         setFiles(prev => prev.map(f => 
-          f.id === fileId ? { ...f, status: Math.random() > 0.1 ? 'success' : 'error' } : f
+          f.id === fileId ? { ...f, dataUrl, status: 'success' } : f
         ));
-        
-        if (Math.random() > 0.1) {
-          toast.success(`${file.name} uploaded successfully`);
-        } else {
-          toast.error(`Failed to upload ${file.name}`);
-        }
-      }, 2000);
+        toast.success(`${file.name} uploaded successfully`);
+      };
+      
+      reader.onerror = () => {
+        setFiles(prev => prev.map(f => 
+          f.id === fileId ? { ...f, status: 'error' } : f
+        ));
+        toast.error(`Failed to upload ${file.name}`);
+      };
+
+      reader.readAsDataURL(file);
     });
   };
 
@@ -192,7 +201,9 @@ const DocumentUpload = () => {
                             documents: successfulFiles.map(f => ({
                               id: f.id,
                               name: f.name,
-                              size: f.size
+                              size: f.size,
+                              type: f.type,
+                              dataUrl: f.dataUrl
                             }))
                           } 
                         });
