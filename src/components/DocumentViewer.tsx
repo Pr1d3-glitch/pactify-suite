@@ -17,6 +17,7 @@ const DocumentViewer = ({ documentUrl, documentName, signature, onSave }: Docume
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [zoom, setZoom] = useState(1);
   const [signatureObject, setSignatureObject] = useState<Group | null>(null);
+  const [savedDocumentUrl, setSavedDocumentUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -83,6 +84,10 @@ const DocumentViewer = ({ documentUrl, documentName, signature, onSave }: Docume
       canvas.dispose();
     };
   }, [documentUrl, documentName]);
+
+  useEffect(() => {
+    setSavedDocumentUrl(null);
+  }, [signature, documentUrl]);
 
   useEffect(() => {
     if (!fabricCanvas || !signature) return;
@@ -176,31 +181,33 @@ const DocumentViewer = ({ documentUrl, documentName, signature, onSave }: Docume
       multiplier: 2,
     });
 
+    setSavedDocumentUrl(finalDocument);
+
+    if (signatureObject) {
+      signatureObject.set({
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+      });
+      fabricCanvas.renderAll();
+    }
+
     if (onSave) {
       onSave(finalDocument);
     }
-    
-    toast.success("Document saved successfully!");
+
+    toast.success("Document saved successfully! You can now download it.");
   };
 
   const handleDownload = () => {
-    if (!fabricCanvas) return;
+    if (!savedDocumentUrl) return;
 
-    // Deselect all objects before downloading
-    fabricCanvas.discardActiveObject();
-    fabricCanvas.renderAll();
-
-    const dataURL = fabricCanvas.toDataURL({
-      format: 'png',
-      quality: 1,
-      multiplier: 2,
-    });
-    
     const link = document.createElement("a");
     link.download = `signed-${documentName}.png`;
-    link.href = dataURL;
+    link.href = savedDocumentUrl;
     link.click();
-    
+
     toast.success("Document downloaded successfully!");
   };
 
@@ -225,13 +232,15 @@ const DocumentViewer = ({ documentUrl, documentName, signature, onSave }: Docume
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleDownload}>
-              <Download className="w-4 h-4 mr-2" />
-              Download
-            </Button>
-            <Button size="sm" onClick={handleSave}>
+            {savedDocumentUrl && (
+              <Button variant="outline" size="sm" onClick={handleDownload}>
+                <Download className="w-4 h-4 mr-2" />
+                Download
+              </Button>
+            )}
+            <Button size="sm" onClick={handleSave} disabled={!!savedDocumentUrl}>
               <Save className="w-4 h-4 mr-2" />
-              Save Document
+              {savedDocumentUrl ? "Saved" : "Save Document"}
             </Button>
           </div>
         </div>
