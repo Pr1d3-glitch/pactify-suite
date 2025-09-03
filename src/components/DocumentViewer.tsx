@@ -208,20 +208,16 @@ const DocumentViewer = ({
   const handleDownload = () => {
     if (!savedDocumentUrl || !fabricCanvas) return;
 
+    const width = fabricCanvas.getWidth();
+    const height = fabricCanvas.getHeight();
+
     const pdf = new jsPDF({
       orientation: "portrait",
       unit: "px",
-      format: [fabricCanvas.width || 800, fabricCanvas.height || 1000],
+      format: [width, height],
     });
 
-    pdf.addImage(
-      savedDocumentUrl,
-      "PNG",
-      0,
-      0,
-      fabricCanvas.width || 800,
-      fabricCanvas.height || 1000
-    );
+    pdf.addImage(savedDocumentUrl, "PNG", 0, 0, width, height);
     pdf.save(`signed-${documentName}.pdf`);
 
     toast.success("Document downloaded successfully!");
