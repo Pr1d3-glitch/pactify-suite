@@ -91,7 +91,9 @@ const DocumentViewer = ({
       });
 
     setFabricCanvas(canvas);
-    return () => canvas.dispose();
+    return () => {
+      canvas.dispose();
+    };
   }, [documentUrl, documentName]);
 
   useEffect(() => {
@@ -202,11 +204,23 @@ const DocumentViewer = ({
     }
 
     onSave?.(finalDocument);
-    toast.success("Document saved successfully! You can now download it.");
+    
+    // Automatically download the signed document
+    setTimeout(() => {
+      handleDownload();
+    }, 500);
+    
+    toast.success("Document saved and downloading...");
   };
 
   const handleDownload = () => {
-    if (!savedDocumentUrl || !fabricCanvas) return;
+    if (!fabricCanvas) return;
+    
+    const currentDocumentUrl = savedDocumentUrl || fabricCanvas.toDataURL({
+      format: "png",
+      quality: 1,
+      multiplier: 2,
+    });
 
     const width = fabricCanvas.getWidth();
     const height = fabricCanvas.getHeight();
@@ -217,9 +231,13 @@ const DocumentViewer = ({
       format: [width, height],
     });
 
-    pdf.addImage(savedDocumentUrl, "PNG", 0, 0, width, height);
-    pdf.save(`signed-${documentName}.pdf`);
-
+    pdf.addImage(currentDocumentUrl, "PNG", 0, 0, width, height);
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const filename = `signed-${documentName.replace(/\.[^/.]+$/, '')}-${timestamp}.pdf`;
+    
+    pdf.save(filename);
     toast.success("Document downloaded successfully!");
   };
 
