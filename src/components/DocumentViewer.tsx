@@ -144,15 +144,15 @@ const DocumentViewer = ({
         });
 
         signatureGroup.setControlsVisibility({
-          mt: false,
-          mb: false,
-          ml: false,
-          mr: false,
-          tl: true,
-          tr: true,
-          bl: true,
-          br: true,
-          mtr: false,
+          mt: true,  // middle top - vertical resize
+          mb: true,  // middle bottom - vertical resize
+          ml: true,  // middle left - horizontal resize
+          mr: true,  // middle right - horizontal resize
+          tl: false, // disable diagonal corners
+          tr: false,
+          bl: false,
+          br: false,
+          mtr: false, // disable rotation
         });
 
         fabricCanvas.add(signatureGroup);
@@ -191,82 +191,109 @@ const DocumentViewer = ({
   const handleSave = () => {
     if (!fabricCanvas) return;
 
+    console.log("Starting save process...");
+    
     // Deselect objects before rendering
     fabricCanvas.discardActiveObject();
     fabricCanvas.renderAll();
 
-    const finalDocument = fabricCanvas.toDataURL({
-      format: "png",
-      quality: 1,
-      multiplier: 2,
-    });
-
-    setSavedDocumentUrl(finalDocument);
-
-    if (signatureObject) {
-      signatureObject.set({
-        selectable: false,
-        evented: false,
-        hasControls: false,
-        hasBorders: false,
-      });
-      fabricCanvas.renderAll();
-    }
-
-    onSave?.(finalDocument);
-    
-    // Automatically download the signed document
+    // Wait for render to complete
     setTimeout(() => {
-      handleDownload();
-    }, 500);
-    
-    toast.success("Document saved and downloading...");
+      console.log("Canvas objects count:", fabricCanvas.getObjects().length);
+      
+      const finalDocument = fabricCanvas.toDataURL({
+        format: "png",
+        quality: 1,
+        multiplier: 2,
+      });
+
+      console.log("Final document data URL length:", finalDocument.length);
+      setSavedDocumentUrl(finalDocument);
+
+      if (signatureObject) {
+        signatureObject.set({
+          selectable: false,
+          evented: false,
+          hasControls: false,
+          hasBorders: false,
+        });
+        fabricCanvas.renderAll();
+        console.log("Signature locked in place");
+      }
+
+      onSave?.(finalDocument);
+      
+      // Automatically download the signed document
+      setTimeout(() => {
+        handleDownload();
+      }, 500);
+      
+      toast.success("Document saved and downloading...");
+    }, 200);
   };
 
   const handleDownload = () => {
     if (!fabricCanvas) {
       console.error("No canvas available for download");
+      toast.error("Canvas not ready");
       return;
     }
+
+    console.log("Starting download process...");
+    console.log("Canvas dimensions:", fabricCanvas.getWidth(), "x", fabricCanvas.getHeight());
+    console.log("Canvas objects:", fabricCanvas.getObjects().length);
     
-    // Ensure canvas is rendered properly
+    // Force a final render
     fabricCanvas.renderAll();
     
-    // Wait a bit for rendering to complete, then capture
+    // Wait for rendering and then capture the canvas
     setTimeout(() => {
-      const canvasDataUrl = fabricCanvas.toDataURL({
-        format: "png",
-        quality: 1,
-        multiplier: 2,
-      });
+      // Use saved document URL if available, otherwise capture current state
+      let canvasDataUrl;
+      
+      if (savedDocumentUrl && savedDocumentUrl.length > 1000) {
+        canvasDataUrl = savedDocumentUrl;
+        console.log("Using saved document URL");
+      } else {
+        canvasDataUrl = fabricCanvas.toDataURL({
+          format: "png",
+          quality: 1,
+          multiplier: 2,
+        });
+        console.log("Generated new canvas data URL");
+      }
       
       console.log("Canvas data URL length:", canvasDataUrl.length);
       
       if (canvasDataUrl.length < 1000) {
-        console.error("Canvas appears to be empty");
-        toast.error("Canvas is empty - cannot create PDF");
+        console.error("Canvas appears to be empty, data URL too short");
+        toast.error("Cannot create PDF - document appears empty");
         return;
       }
 
       const width = fabricCanvas.getWidth();
       const height = fabricCanvas.getHeight();
 
-      const pdf = new jsPDF({
-        orientation: "portrait", 
-        unit: "px",
-        format: [width, height],
-      });
+      try {
+        const pdf = new jsPDF({
+          orientation: "portrait",
+          unit: "px", 
+          format: [width, height],
+        });
 
-      pdf.addImage(canvasDataUrl, "PNG", 0, 0, width, height);
-      
-      // Generate filename with timestamp
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      const filename = `signed-${documentName.replace(/\.[^/.]+$/, '')}-${timestamp}.pdf`;
-      
-      console.log("Saving PDF:", filename);
-      pdf.save(filename);
-      toast.success("Document downloaded successfully!");
-    }, 300);
+        pdf.addImage(canvasDataUrl, "PNG", 0, 0, width, height);
+        
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const filename = `signed-${documentName.replace(/\.[^/.]+$/, '')}-${timestamp}.pdf`;
+        
+        console.log("Saving PDF as:", filename);
+        pdf.save(filename);
+        toast.success("Document downloaded successfully!");
+      } catch (error) {
+        console.error("Error creating PDF:", error);
+        toast.error("Error creating PDF");
+      }
+    }, 500);
   };
 
   return (
@@ -322,7 +349,7 @@ const DocumentViewer = ({
           <div className="mt-4 p-3 bg-muted/30 rounded-lg">
             <p className="text-sm text-muted-foreground">
               💡 <strong>Tip:</strong> Click on your signature to move it
-              around the document. Use the corner handles to resize it. Click
+              around the document. Use the side handles to resize horizontally/vertically. Click
               "Save Document" when you're satisfied with the placement.
             </p>
           </div>
