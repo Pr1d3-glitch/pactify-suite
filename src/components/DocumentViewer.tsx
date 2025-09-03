@@ -3,6 +3,7 @@ import { Canvas as FabricCanvas, FabricImage as FabricImageClass, Rect, Group, F
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ZoomIn, ZoomOut, RotateCcw, Save, Download } from "lucide-react";
+import jsPDF from "jspdf";
 import { toast } from "sonner";
 
 interface DocumentViewerProps {
@@ -17,65 +18,72 @@ const DocumentViewer = ({ documentUrl, documentName, signature, onSave }: Docume
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [zoom, setZoom] = useState(1);
   const [signatureObject, setSignatureObject] = useState<Group | null>(null);
+  const [savedDocumentUrl, setSavedDocumentUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
 
     const canvas = new FabricCanvas(canvasRef.current, {
-      width: 800,
-      height: 1000,
       backgroundColor: "#ffffff",
     });
 
     // Load the document image
     FabricImageClass.fromURL(documentUrl, {
-      crossOrigin: 'anonymous'
-    }).then((img) => {
-      // Scale image to fit canvas while maintaining aspect ratio
-      const scale = Math.min(
-        canvas.width! / img.width!,
-        canvas.height! / img.height!
-      );
-      
-      img.scale(scale);
-      img.set({
-        left: (canvas.width! - img.width! * scale) / 2,
-        top: 0,
-        selectable: false,
-        evented: false,
+      crossOrigin: "anonymous",
+    })
+      .then((img) => {
+        const maxWidth = 800;
+        const maxHeight = 1000;
+        const scale = Math.min(
+          maxWidth / img.width!,
+          maxHeight / img.height!
+        );
+
+        const canvasWidth = img.width! * scale;
+        const canvasHeight = img.height! * scale;
+        canvas.setWidth(canvasWidth);
+        canvas.setHeight(canvasHeight);
+
+        img.scale(scale);
+        img.set({
+          left: 0,
+          top: 0,
+          selectable: false,
+          evented: false,
+        });
+
+        canvas.add(img);
+        canvas.renderAll();
+      })
+      .catch(() => {
+        // Fallback for non-image files - create a document placeholder
+        const documentRect = new Rect({
+          left: 50,
+          top: 50,
+          width: 700,
+          height: 900,
+          fill: "white",
+          stroke: "#e5e7eb",
+          strokeWidth: 2,
+          selectable: false,
+          evented: false,
+        });
+
+        canvas.add(documentRect);
+        canvas.renderAll();
+
+        // Add document name text
+        const text = new FabricText(documentName, {
+          left: 100,
+          top: 100,
+          fontSize: 24,
+          fill: "#374151",
+          selectable: false,
+          evented: false,
+        });
+
+        canvas.add(text);
       });
-      
-      canvas.add(img);
-      canvas.renderAll();
-    }).catch(() => {
-      // Fallback for non-image files - create a document placeholder
-      const documentRect = new Rect({
-        left: 50,
-        top: 50,
-        width: 700,
-        height: 900,
-        fill: 'white',
-        stroke: '#e5e7eb',
-        strokeWidth: 2,
-        selectable: false,
-        evented: false,
-      });
-      
-      canvas.add(documentRect);
-      canvas.renderAll();
-      
-      // Add document name text
-      const text = new FabricText(documentName, {
-        left: 100,
-        top: 100,
-        fontSize: 24,
-        fill: '#374151',
-        selectable: false,
-        evented: false,
-      });
-      
-      canvas.add(text);
-    });
 
     setFabricCanvas(canvas);
 
@@ -83,6 +91,10 @@ const DocumentViewer = ({ documentUrl, documentName, signature, onSave }: Docume
       canvas.dispose();
     };
   }, [documentUrl, documentName]);
+
+  useEffect(() => {
+    setSavedDocumentUrl(null);
+  }, [signature, documentUrl]);
 
   useEffect(() => {
     if (!fabricCanvas || !signature) return;
@@ -176,32 +188,42 @@ const DocumentViewer = ({ documentUrl, documentName, signature, onSave }: Docume
       multiplier: 2,
     });
 
+    setSavedDocumentUrl(finalDocument);
+
+    if (signatureObject) {
+      signatureObject.set({
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+      });
+      fabricCanvas.renderAll();
+    }
+
     if (onSave) {
       onSave(finalDocument);
     }
-    
-    toast.success("Document saved successfully!");
+
+    toast.success("Document finalized! You can now download it.");
   };
 
   const handleDownload = () => {
-    if (!fabricCanvas) return;
+    if (!savedDocumentUrl) return;
 
-    // Deselect all objects before downloading
-    fabricCanvas.discardActiveObject();
-    fabricCanvas.renderAll();
+    const img = new Image();
+    img.src = savedDocumentUrl;
+    img.onload = () => {
+      const { width, height } = img;
+      const pdf = new jsPDF({
+        orientation: width > height ? "landscape" : "portrait",
+        unit: "px",
+        format: [width, height],
+      });
+      pdf.addImage(savedDocumentUrl, "PNG", 0, 0, width, height);
+      pdf.save(`signed-${documentName}.pdf`);
 
-    const dataURL = fabricCanvas.toDataURL({
-      format: 'png',
-      quality: 1,
-      multiplier: 2,
-    });
-    
-    const link = document.createElement("a");
-    link.download = `signed-${documentName}.png`;
-    link.href = dataURL;
-    link.click();
-    
-    toast.success("Document downloaded successfully!");
+      toast.success("Document downloaded successfully!");
+    };
   };
 
   return (
@@ -209,48 +231,61 @@ const DocumentViewer = ({ documentUrl, documentName, signature, onSave }: Docume
       <CardContent className="p-4">
         {/* Controls */}
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleZoomOut}>
-              <ZoomOut className="w-4 h-4" />
-            </Button>
-            <span className="text-sm font-medium min-w-[60px] text-center">
-              {Math.round(zoom * 100)}%
-            </span>
-            <Button variant="outline" size="sm" onClick={handleZoomIn}>
-              <ZoomIn className="w-4 h-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleResetZoom}>
-              <RotateCcw className="w-4 h-4" />
-            </Button>
-          </div>
+          {!savedDocumentUrl && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleZoomOut}>
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+              <span className="text-sm font-medium min-w-[60px] text-center">
+                {Math.round(zoom * 100)}%
+              </span>
+              <Button variant="outline" size="sm" onClick={handleZoomIn}>
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleResetZoom}>
+                <RotateCcw className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleDownload}>
-              <Download className="w-4 h-4 mr-2" />
-              Download
-            </Button>
-            <Button size="sm" onClick={handleSave}>
-              <Save className="w-4 h-4 mr-2" />
-              Save Document
-            </Button>
+            {savedDocumentUrl ? (
+              <Button variant="outline" size="sm" onClick={handleDownload}>
+                <Download className="w-4 h-4 mr-2" />
+                Download PDF
+              </Button>
+            ) : (
+              <Button size="sm" onClick={handleSave}>
+                <Save className="w-4 h-4 mr-2" />
+                Finalize Document
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* Canvas */}
+        {/* Canvas or Preview */}
         <div className="border border-border rounded-lg overflow-hidden bg-gray-50 flex justify-center">
-          <canvas ref={canvasRef} className="max-w-full max-h-[600px]" />
+          {savedDocumentUrl ? (
+            <img
+              src={savedDocumentUrl}
+              alt="Signed document preview"
+              className="max-w-full max-h-[600px]"
+            />
+          ) : (
+            <canvas ref={canvasRef} className="max-w-full max-h-[600px]" />
+          )}
         </div>
 
-        {signature && (
+        {signature && !savedDocumentUrl && (
           <div className="mt-4 p-3 bg-muted/30 rounded-lg">
             <p className="text-sm text-muted-foreground">
-              💡 <strong>Tip:</strong> Click on your signature to move it around the document. 
-              Use the corner handles to resize it. Click "Save Document" when you're satisfied with the placement.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                💡 <strong>Tip:</strong> Click on your signature to move it around the document.
+                Use the corner handles to resize it. Click "Finalize Document" when you're satisfied with the placement.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
   );
 };
 

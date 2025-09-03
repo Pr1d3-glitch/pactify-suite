@@ -2,14 +2,15 @@ import { useRef, useEffect, useState } from "react";
 import { Canvas as FabricCanvas, PencilBrush } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RotateCcw, Download, Pen, Palette } from "lucide-react";
+import { RotateCcw, Download, Pen, Palette, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
 interface EnhancedSignaturePadProps {
   onSignatureChange?: (signature: string) => void;
+  onFinalize?: () => void;
 }
 
-const EnhancedSignaturePad = ({ onSignatureChange }: EnhancedSignaturePadProps) => {
+const EnhancedSignaturePad = ({ onSignatureChange, onFinalize }: EnhancedSignaturePadProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [hasSignature, setHasSignature] = useState(false);
@@ -93,6 +94,12 @@ const EnhancedSignaturePad = ({ onSignatureChange }: EnhancedSignaturePadProps) 
     toast.success("Signature downloaded");
   };
 
+  const finalizeSignature = () => {
+    if (!hasSignature || !onFinalize) return;
+    onFinalize();
+    toast.success("Signature finalized! Place it on the document.");
+  };
+
   const colors = [
     "#1e293b", // Default dark
     "#0f172a", // Darker
@@ -174,7 +181,7 @@ const EnhancedSignaturePad = ({ onSignatureChange }: EnhancedSignaturePadProps) 
             <RotateCcw className="w-4 h-4 mr-2" />
             Clear
           </Button>
-          
+
           <Button
             variant="outline"
             size="sm"
@@ -183,6 +190,15 @@ const EnhancedSignaturePad = ({ onSignatureChange }: EnhancedSignaturePadProps) 
           >
             <Download className="w-4 h-4 mr-2" />
             Download
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={finalizeSignature}
+            disabled={!hasSignature}
+          >
+            <ArrowRight className="w-4 h-4 mr-2" />
+            Next: Place Signature
           </Button>
         </div>
       </CardContent>

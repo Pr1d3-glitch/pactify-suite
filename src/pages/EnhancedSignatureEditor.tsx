@@ -200,7 +200,10 @@ const EnhancedSignatureEditor = () => {
               </Card>
 
               {/* Enhanced Signature Pad */}
-              <EnhancedSignaturePad onSignatureChange={handleSignatureChange} />
+              <EnhancedSignaturePad
+                onSignatureChange={handleSignatureChange}
+                onFinalize={() => setActiveTab("preview")}
+              />
             </TabsContent>
 
             <TabsContent value="preview" className="space-y-6">
