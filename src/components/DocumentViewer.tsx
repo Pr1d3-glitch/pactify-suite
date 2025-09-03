@@ -32,42 +32,38 @@ const DocumentViewer = ({
   const [savedDocumentUrl, setSavedDocumentUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
-
     let mounted = true;
     let canvas: FabricCanvas | null = null;
 
     const initCanvas = async () => {
       try {
         canvas = new FabricCanvas(canvasRef.current!, {
-          width: 800,
-          height: 1000,
           backgroundColor: "#ffffff",
         });
 
-        if (!mounted) {
-          canvas.dispose();
-          return;
-        }
-
-        console.log("Loading document:", documentUrl);
-
-        // Load the document image
+        // Try loading the document as an image
         try {
-          const img = await FabricImageClass.fromURL(documentUrl, { crossOrigin: "anonymous" });
-          
+          const img = await FabricImageClass.fromURL(documentUrl, {
+            crossOrigin: "anonymous",
+          });
+
           if (!mounted || !canvas) return;
-          
-          console.log("Image loaded successfully", img.width, img.height);
-          // Scale image to fit canvas while maintaining aspect ratio
+
+          const maxWidth = 800;
+          const maxHeight = 1000;
           const scale = Math.min(
-            canvas.width! / img.width!,
-            canvas.height! / img.height!
+            maxWidth / img.width!,
+            maxHeight / img.height!
           );
+
+          const canvasWidth = img.width! * scale;
+          const canvasHeight = img.height! * scale;
+          canvas.setWidth(canvasWidth);
+          canvas.setHeight(canvasHeight);
 
           img.scale(scale);
           img.set({
-            left: (canvas.width! - img.width! * scale) / 2,
+            left: 0,
             top: 0,
             selectable: false,
             evented: false,
@@ -75,13 +71,10 @@ const DocumentViewer = ({
 
           canvas.add(img);
           canvas.renderAll();
-          console.log("Document added to canvas");
-        } catch (error) {
-          console.log("Image loading failed, creating placeholder:", error);
-          
+        } catch {
           if (!mounted || !canvas) return;
-          
-          // Fallback for non-image files - create a document placeholder
+
+          // Fallback for non-image files
           const documentRect = new Rect({
             left: 50,
             top: 50,
@@ -96,7 +89,6 @@ const DocumentViewer = ({
 
           canvas.add(documentRect);
 
-          // Add document name text
           const text = new FabricText(documentName, {
             left: 100,
             top: 100,
@@ -108,7 +100,6 @@ const DocumentViewer = ({
 
           canvas.add(text);
           canvas.renderAll();
-          console.log("Placeholder document created");
         }
 
         if (mounted && canvas) {
@@ -120,29 +111,23 @@ const DocumentViewer = ({
     };
 
     initCanvas();
-    
+
     return () => {
-      console.log("Cleaning up canvas");
       mounted = false;
-      
       if (canvas) {
         try {
-          // Clear all objects first
           canvas.clear();
-          // Then dispose
           canvas.dispose();
-        } catch (error) {
-          console.warn("Canvas disposal error (expected):", error);
+        } catch (err) {
+          console.warn("Canvas cleanup issue:", err);
         }
       }
-      
       setFabricCanvas(null);
       setSignatureObject(null);
     };
   }, [documentUrl, documentName]);
 
   useEffect(() => {
-    // New doc/signature → clear saved preview so user must save again
     setSavedDocumentUrl(null);
   }, [signature, documentUrl]);
 
@@ -153,7 +138,6 @@ const DocumentViewer = ({
 
     const addSignature = async () => {
       try {
-        // Remove existing signature if any
         if (signatureObject && fabricCanvas) {
           fabricCanvas.remove(signatureObject);
           setSignatureObject(null);
@@ -161,12 +145,11 @@ const DocumentViewer = ({
 
         if (!mounted || !fabricCanvas) return;
 
-        // Add new signature
-        const img = await FabricImageClass.fromURL(signature, { crossOrigin: "anonymous" });
-        
+        const img = await FabricImageClass.fromURL(signature, {
+          crossOrigin: "anonymous",
+        });
         if (!mounted || !fabricCanvas) return;
 
-        // Background around signature for clarity
         const signatureBg = new Rect({
           width: img.width! + 20,
           height: img.height! + 10,
@@ -188,11 +171,11 @@ const DocumentViewer = ({
         });
 
         signatureGroup.setControlsVisibility({
-          mt: true,  // middle top - vertical resize
-          mb: true,  // middle bottom - vertical resize
-          ml: true,  // middle left - horizontal resize
-          mr: true,  // middle right - horizontal resize
-          tl: false, // disable diagonal corners
+          mt: true, // vertical resize
+          mb: true,
+          ml: true, // horizontal resize
+          mr: true,
+          tl: false, // disable diagonals
           tr: false,
           bl: false,
           br: false,
@@ -204,7 +187,6 @@ const DocumentViewer = ({
           setSignatureObject(signatureGroup);
           fabricCanvas.setActiveObject(signatureGroup);
           fabricCanvas.renderAll();
-
           toast.success("Signature added! Drag and resize as needed.");
         }
       } catch (error) {
@@ -214,7 +196,6 @@ const DocumentViewer = ({
     };
 
     addSignature();
-
     return () => {
       mounted = false;
     };
@@ -246,109 +227,47 @@ const DocumentViewer = ({
   const handleSave = () => {
     if (!fabricCanvas) return;
 
-    console.log("Starting save process...");
-    
-    // Deselect objects before rendering
     fabricCanvas.discardActiveObject();
     fabricCanvas.renderAll();
 
-    // Wait for render to complete
-    setTimeout(() => {
-      console.log("Canvas objects count:", fabricCanvas.getObjects().length);
-      
-      const finalDocument = fabricCanvas.toDataURL({
-        format: "png",
-        quality: 1,
-        multiplier: 2,
+    const finalDocument = fabricCanvas.toDataURL({
+      format: "png",
+      quality: 1,
+      multiplier: 2,
+    });
+
+    setSavedDocumentUrl(finalDocument);
+
+    if (signatureObject) {
+      signatureObject.set({
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
       });
+      fabricCanvas.renderAll();
+    }
 
-      console.log("Final document data URL length:", finalDocument.length);
-      setSavedDocumentUrl(finalDocument);
-
-      if (signatureObject) {
-        signatureObject.set({
-          selectable: false,
-          evented: false,
-          hasControls: false,
-          hasBorders: false,
-        });
-        fabricCanvas.renderAll();
-        console.log("Signature locked in place");
-      }
-
-      onSave?.(finalDocument);
-      
-      // Automatically download the signed document
-      setTimeout(() => {
-        handleDownload();
-      }, 500);
-      
-      toast.success("Document saved and downloading...");
-    }, 200);
+    onSave?.(finalDocument);
+    toast.success("Document saved successfully! You can now download it.");
   };
 
   const handleDownload = () => {
-    if (!fabricCanvas) {
-      console.error("No canvas available for download");
-      toast.error("Canvas not ready");
-      return;
-    }
+    if (!savedDocumentUrl || !fabricCanvas) return;
 
-    console.log("Starting download process...");
-    console.log("Canvas dimensions:", fabricCanvas.getWidth(), "x", fabricCanvas.getHeight());
-    console.log("Canvas objects:", fabricCanvas.getObjects().length);
-    
-    // Force a final render
-    fabricCanvas.renderAll();
-    
-    // Wait for rendering and then capture the canvas
-    setTimeout(() => {
-      // Use saved document URL if available, otherwise capture current state
-      let canvasDataUrl;
-      
-      if (savedDocumentUrl && savedDocumentUrl.length > 1000) {
-        canvasDataUrl = savedDocumentUrl;
-        console.log("Using saved document URL");
-      } else {
-        canvasDataUrl = fabricCanvas.toDataURL({
-          format: "png",
-          quality: 1,
-          multiplier: 2,
-        });
-        console.log("Generated new canvas data URL");
-      }
-      
-      console.log("Canvas data URL length:", canvasDataUrl.length);
-      
-      if (canvasDataUrl.length < 1000) {
-        console.error("Canvas appears to be empty, data URL too short");
-        toast.error("Cannot create PDF - document appears empty");
-        return;
-      }
+    const width = fabricCanvas.getWidth();
+    const height = fabricCanvas.getHeight();
 
-      const width = fabricCanvas.getWidth();
-      const height = fabricCanvas.getHeight();
+    const pdf = new jsPDF({
+      orientation: width > height ? "landscape" : "portrait",
+      unit: "px",
+      format: [width, height],
+    });
 
-      try {
-        const pdf = new jsPDF({
-          orientation: "portrait",
-          unit: "px", 
-          format: [width, height],
-        });
+    pdf.addImage(savedDocumentUrl, "PNG", 0, 0, width, height);
+    pdf.save(`signed-${documentName}.pdf`);
 
-        pdf.addImage(canvasDataUrl, "PNG", 0, 0, width, height);
-        
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-        const filename = `signed-${documentName.replace(/\.[^/.]+$/, '')}-${timestamp}.pdf`;
-        
-        console.log("Saving PDF as:", filename);
-        pdf.save(filename);
-        toast.success("Document downloaded successfully!");
-      } catch (error) {
-        console.error("Error creating PDF:", error);
-        toast.error("Error creating PDF");
-      }
-    }, 500);
+    toast.success("Document downloaded successfully!");
   };
 
   return (
@@ -404,7 +323,7 @@ const DocumentViewer = ({
           <div className="mt-4 p-3 bg-muted/30 rounded-lg">
             <p className="text-sm text-muted-foreground">
               💡 <strong>Tip:</strong> Click on your signature to move it
-              around the document. Use the side handles to resize horizontally/vertically. Click
+              around the document. Use the side handles to resize it. Click
               "Save Document" when you're satisfied with the placement.
             </p>
           </div>
