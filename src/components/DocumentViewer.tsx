@@ -34,75 +34,110 @@ const DocumentViewer = ({
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width: 800,
-      height: 1000,
-      backgroundColor: "#ffffff",
-    });
+    let mounted = true;
+    let canvas: FabricCanvas | null = null;
 
-    console.log("Loading document:", documentUrl);
-
-    // Load the document image
-    FabricImageClass.fromURL(documentUrl, { crossOrigin: "anonymous" })
-      .then((img) => {
-        console.log("Image loaded successfully", img.width, img.height);
-        // Scale image to fit canvas while maintaining aspect ratio
-        const scale = Math.min(
-          canvas.width! / img.width!,
-          canvas.height! / img.height!
-        );
-
-        img.scale(scale);
-        img.set({
-          left: (canvas.width! - img.width! * scale) / 2,
-          top: 0,
-          selectable: false,
-          evented: false,
+    const initCanvas = async () => {
+      try {
+        canvas = new FabricCanvas(canvasRef.current!, {
+          width: 800,
+          height: 1000,
+          backgroundColor: "#ffffff",
         });
 
-        canvas.add(img);
-        canvas.renderAll();
-        console.log("Document added to canvas");
-      })
-      .catch((error) => {
-        console.log("Image loading failed, creating placeholder:", error);
-        // Fallback for non-image files - create a document placeholder
-        const documentRect = new Rect({
-          left: 50,
-          top: 50,
-          width: 700,
-          height: 900,
-          fill: "white",
-          stroke: "#e5e7eb",
-          strokeWidth: 2,
-          selectable: false,
-          evented: false,
-        });
+        if (!mounted) {
+          canvas.dispose();
+          return;
+        }
 
-        canvas.add(documentRect);
+        console.log("Loading document:", documentUrl);
 
-        // Add document name text
-        const text = new FabricText(documentName, {
-          left: 100,
-          top: 100,
-          fontSize: 24,
-          fill: "#374151",
-          selectable: false,
-          evented: false,
-        });
+        // Load the document image
+        try {
+          const img = await FabricImageClass.fromURL(documentUrl, { crossOrigin: "anonymous" });
+          
+          if (!mounted || !canvas) return;
+          
+          console.log("Image loaded successfully", img.width, img.height);
+          // Scale image to fit canvas while maintaining aspect ratio
+          const scale = Math.min(
+            canvas.width! / img.width!,
+            canvas.height! / img.height!
+          );
 
-        canvas.add(text);
-        canvas.renderAll();
-        console.log("Placeholder document created");
-      });
+          img.scale(scale);
+          img.set({
+            left: (canvas.width! - img.width! * scale) / 2,
+            top: 0,
+            selectable: false,
+            evented: false,
+          });
 
-    setFabricCanvas(canvas);
+          canvas.add(img);
+          canvas.renderAll();
+          console.log("Document added to canvas");
+        } catch (error) {
+          console.log("Image loading failed, creating placeholder:", error);
+          
+          if (!mounted || !canvas) return;
+          
+          // Fallback for non-image files - create a document placeholder
+          const documentRect = new Rect({
+            left: 50,
+            top: 50,
+            width: 700,
+            height: 900,
+            fill: "white",
+            stroke: "#e5e7eb",
+            strokeWidth: 2,
+            selectable: false,
+            evented: false,
+          });
+
+          canvas.add(documentRect);
+
+          // Add document name text
+          const text = new FabricText(documentName, {
+            left: 100,
+            top: 100,
+            fontSize: 24,
+            fill: "#374151",
+            selectable: false,
+            evented: false,
+          });
+
+          canvas.add(text);
+          canvas.renderAll();
+          console.log("Placeholder document created");
+        }
+
+        if (mounted && canvas) {
+          setFabricCanvas(canvas);
+        }
+      } catch (error) {
+        console.error("Canvas initialization error:", error);
+      }
+    };
+
+    initCanvas();
     
     return () => {
-      console.log("Disposing canvas");
+      console.log("Cleaning up canvas");
+      mounted = false;
+      
       if (canvas) {
-        canvas.dispose();
+        try {
+          // Clear all objects first
+          canvas.clear();
+          // Then dispose
+          canvas.dispose();
+        } catch (error) {
+          console.warn("Canvas disposal error (expected):", error);
+        }
       }
+      
+      setFabricCanvas(null);
+      setSignatureObject(null);
     };
   }, [documentUrl, documentName]);
 
@@ -114,14 +149,23 @@ const DocumentViewer = ({
   useEffect(() => {
     if (!fabricCanvas || !signature) return;
 
-    // Remove existing signature if any
-    if (signatureObject) {
-      fabricCanvas.remove(signatureObject);
-    }
+    let mounted = true;
 
-    // Add new signature
-    FabricImageClass.fromURL(signature, { crossOrigin: "anonymous" }).then(
-      (img) => {
+    const addSignature = async () => {
+      try {
+        // Remove existing signature if any
+        if (signatureObject && fabricCanvas) {
+          fabricCanvas.remove(signatureObject);
+          setSignatureObject(null);
+        }
+
+        if (!mounted || !fabricCanvas) return;
+
+        // Add new signature
+        const img = await FabricImageClass.fromURL(signature, { crossOrigin: "anonymous" });
+        
+        if (!mounted || !fabricCanvas) return;
+
         // Background around signature for clarity
         const signatureBg = new Rect({
           width: img.width! + 20,
@@ -155,14 +199,25 @@ const DocumentViewer = ({
           mtr: false, // disable rotation
         });
 
-        fabricCanvas.add(signatureGroup);
-        setSignatureObject(signatureGroup);
-        fabricCanvas.setActiveObject(signatureGroup);
-        fabricCanvas.renderAll();
+        if (mounted && fabricCanvas) {
+          fabricCanvas.add(signatureGroup);
+          setSignatureObject(signatureGroup);
+          fabricCanvas.setActiveObject(signatureGroup);
+          fabricCanvas.renderAll();
 
-        toast.success("Signature added! Drag and resize as needed.");
+          toast.success("Signature added! Drag and resize as needed.");
+        }
+      } catch (error) {
+        console.error("Error adding signature:", error);
+        toast.error("Failed to add signature");
       }
-    );
+    };
+
+    addSignature();
+
+    return () => {
+      mounted = false;
+    };
   }, [signature, fabricCanvas]);
 
   const handleZoomIn = () => {
