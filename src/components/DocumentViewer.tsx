@@ -40,9 +40,12 @@ const DocumentViewer = ({
       backgroundColor: "#ffffff",
     });
 
+    console.log("Loading document:", documentUrl);
+
     // Load the document image
     FabricImageClass.fromURL(documentUrl, { crossOrigin: "anonymous" })
       .then((img) => {
+        console.log("Image loaded successfully", img.width, img.height);
         // Scale image to fit canvas while maintaining aspect ratio
         const scale = Math.min(
           canvas.width! / img.width!,
@@ -59,8 +62,10 @@ const DocumentViewer = ({
 
         canvas.add(img);
         canvas.renderAll();
+        console.log("Document added to canvas");
       })
-      .catch(() => {
+      .catch((error) => {
+        console.log("Image loading failed, creating placeholder:", error);
         // Fallback for non-image files - create a document placeholder
         const documentRect = new Rect({
           left: 50,
@@ -75,7 +80,6 @@ const DocumentViewer = ({
         });
 
         canvas.add(documentRect);
-        canvas.renderAll();
 
         // Add document name text
         const text = new FabricText(documentName, {
@@ -88,11 +92,17 @@ const DocumentViewer = ({
         });
 
         canvas.add(text);
+        canvas.renderAll();
+        console.log("Placeholder document created");
       });
 
     setFabricCanvas(canvas);
+    
     return () => {
-      canvas.dispose();
+      console.log("Disposing canvas");
+      if (canvas) {
+        canvas.dispose();
+      }
     };
   }, [documentUrl, documentName]);
 
@@ -214,31 +224,49 @@ const DocumentViewer = ({
   };
 
   const handleDownload = () => {
-    if (!fabricCanvas) return;
+    if (!fabricCanvas) {
+      console.error("No canvas available for download");
+      return;
+    }
     
-    const currentDocumentUrl = savedDocumentUrl || fabricCanvas.toDataURL({
-      format: "png",
-      quality: 1,
-      multiplier: 2,
-    });
-
-    const width = fabricCanvas.getWidth();
-    const height = fabricCanvas.getHeight();
-
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "px",
-      format: [width, height],
-    });
-
-    pdf.addImage(currentDocumentUrl, "PNG", 0, 0, width, height);
+    // Ensure canvas is rendered properly
+    fabricCanvas.renderAll();
     
-    // Generate filename with timestamp
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-    const filename = `signed-${documentName.replace(/\.[^/.]+$/, '')}-${timestamp}.pdf`;
-    
-    pdf.save(filename);
-    toast.success("Document downloaded successfully!");
+    // Wait a bit for rendering to complete, then capture
+    setTimeout(() => {
+      const canvasDataUrl = fabricCanvas.toDataURL({
+        format: "png",
+        quality: 1,
+        multiplier: 2,
+      });
+      
+      console.log("Canvas data URL length:", canvasDataUrl.length);
+      
+      if (canvasDataUrl.length < 1000) {
+        console.error("Canvas appears to be empty");
+        toast.error("Canvas is empty - cannot create PDF");
+        return;
+      }
+
+      const width = fabricCanvas.getWidth();
+      const height = fabricCanvas.getHeight();
+
+      const pdf = new jsPDF({
+        orientation: "portrait", 
+        unit: "px",
+        format: [width, height],
+      });
+
+      pdf.addImage(canvasDataUrl, "PNG", 0, 0, width, height);
+      
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      const filename = `signed-${documentName.replace(/\.[^/.]+$/, '')}-${timestamp}.pdf`;
+      
+      console.log("Saving PDF:", filename);
+      pdf.save(filename);
+      toast.success("Document downloaded successfully!");
+    }, 300);
   };
 
   return (
